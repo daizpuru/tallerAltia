@@ -1,15 +1,19 @@
 node {
     withMaven(maven:'maven') {
+       
+        agent {
+            docker {
+                image 'maven:3-alpine' 
+                args '-v /root/.m2:/root/.m2' 
+            }
+        }
+        
         stage('Checkout') {
             git url: 'https://github.com/daizpuru/tallerAltia.git'
         }
 
         stage('Build') {
-            sh 'mvn clean install'
-
-            def pom = readMavenPom file:'pom.xml'
-            print pom.version
-            env.version = pom.version
+            sh 'mvn -B -DskipTests clean package'
         }
 
         stage('Image') {
