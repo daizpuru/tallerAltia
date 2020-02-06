@@ -1,71 +1,26 @@
-#!/usr/bin/env groovy
-
-pipeline {
-    agent any
-	
-    triggers {
-        pollSCM('*/15 * * * *')
-    }
-
-    options { disableConcurrentBuilds() }
-
-    stages {
-        stage('Permissions') {
-            steps {
-                sh 'chmod 775 *'
-            }
-        }
-		
-		stage('Cleanup') {
-            steps {
-                sh 'mvn -DskipTests clean'
-            }
+node {
+    withMaven(maven:'maven') {
+        stage('Checkout') {
+            git url: 'https://github.com/daizpuru/tallerAltia.git'
         }
 
         stage('Build') {
-            steps {
-                sh 'mvn -DskipTests clean package'
+            sh 'mvn clean install'
+
+            def pom = readMavenPom file:'pom.xml'
+            print pom.version
+            env.version = pom.version
+        }
+
+        stage('Image') {
+            dir ('tallerAltia') {
+                def app = docker.build "localhost:5000/testAltia:1.0"
+                app.push()
             }
         }
 
-        stage('Update Docker UAT image') {
-            when { branch "master" }
-            steps {
-                sh '''
-					docker login -u "daizpuru" -p "czvak71947373"
-                    docker build --no-cache -t person .
-                    docker tag person:latest amritendudockerhub/person:latest
-                    docker push amritendudockerhub/person:latest
-					docker rmi person:latest
-                '''
-            }
-        }
-
-        stage('Update UAT container') {
-            when { branch "master" }
-            steps {
-                sh '''
-					docker login -u "daizpuru" -p "czvak71947373"
-                    docker pull amritendudockerhub/person:latest
-					docker stop person
-					docker rm person
-					docker run -p 9090:9090 --name person -t -d amritendudockerhub/person
-					docker rmi -f $(docker images -q --filter dangling=true)
-                '''
-            }
-        }
-
-        stage('Release Docker image') {
-            when { buildingTag() }
-            steps {
-                sh '''
-					docker login -u "daizpuru" -p "czvak71947373"
-                    docker build --no-cache -t person .
-                    docker tag person:latest amritendudockerhub/person:${TAG_NAME}
-                    docker push amritendudockerhub/person:${TAG_NAME}
-					docker rmi $(docker images -f “dangling=true” -q)
-               '''
-            }
+        stage ('Run') {
+            docker.image("localhost:5000/testAltia:1.0").run('-p 3333:3333 --name mi_app')
         }
     }
 }
